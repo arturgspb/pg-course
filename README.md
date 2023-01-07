@@ -14,3 +14,35 @@ left join user_client_link as ucl on cli.id = ucl.client_id
 left join users as usr ON ucl.user_id = usr.id
 where cli.id IN (1,2,3)
 ```
+
+
+
+Example triggers
+
+```sql
+alter table users add name text;
+
+CREATE OR REPLACE FUNCTION public.update_users_name()
+RETURNS trigger AS
+$BODY$
+BEGIN
+NEW.name = CONCAT(NEW.first_name, ' ', NEW.last_name);
+RETURN NEW;
+END;
+$BODY$
+LANGUAGE plpgsql VOLATILE
+COST 100;
+
+CREATE TRIGGER "update_users_name_on_update_trigger"
+  BEFORE UPDATE OF first_name, last_name ON users
+  FOR EACH ROW WHEN ((new.first_name != old.first_name) or (new.last_name != old.last_name))
+  EXECUTE PROCEDURE "update_users_name"();
+
+CREATE TRIGGER "update_users_name_on_insert_trigger"
+  BEFORE INSERT ON users
+  FOR EACH ROW
+  EXECUTE PROCEDURE "update_users_name"();
+  
+update users set name = CONCAT(first_name, ' ', last_name);
+```
+

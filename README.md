@@ -167,3 +167,123 @@ where id > 2500000
 group by 1
 
 ```
+
+
+## Window functions
+
+```sql
+create table transaction
+(
+	id bigserial
+		constraint transaction_pk
+			primary key,
+	client_id int
+		constraint transaction_client_id_fk
+			references client,
+	amount decimal,
+	created_at timestamptz default NOW()
+);
+
+
+insert into transaction (client_id, amount, created_at) values (1, 1500, '2023-01-01 00:00:01');
+insert into transaction (client_id, amount, created_at) values (1, 1500, '2023-01-01 13:00:02');
+insert into transaction (client_id, amount, created_at) values (1, 2700, '2023-01-02 11:47:17');
+insert into transaction (client_id, amount, created_at) values (1, 2700, '2023-01-11 15:20:24');
+insert into transaction (client_id, amount, created_at) values (1, 1500, '2023-02-01 00:00:01');
+insert into transaction (client_id, amount, created_at) values (1, 1500, '2023-02-01 13:00:02');
+insert into transaction (client_id, amount, created_at) values (1, 2700, '2023-02-02 11:47:17');
+insert into transaction (client_id, amount, created_at) values (1, 2700, '2023-02-11 15:20:24');
+insert into transaction (client_id, amount, created_at) values (1, 1500, '2023-03-01 00:00:01');
+insert into transaction (client_id, amount, created_at) values (1, 1500, '2023-03-01 13:00:02');
+insert into transaction (client_id, amount, created_at) values (1, 2700, '2023-03-02 11:47:17');
+insert into transaction (client_id, amount, created_at) values (1, 2700, '2023-03-11 15:20:24');
+
+insert into transaction (client_id, amount, created_at) values (2, 500, '2023-01-01 00:00:01');
+insert into transaction (client_id, amount, created_at) values (3, 41500, '2023-01-01 15:00:02');
+insert into transaction (client_id, amount, created_at) values (3, 32700, '2023-01-02 15:47:17');
+insert into transaction (client_id, amount, created_at) values (3, 12700, '2023-01-11 17:45:24');
+insert into transaction (client_id, amount, created_at) values (2, 500, '2023-02-02 00:00:01');
+insert into transaction (client_id, amount, created_at) values (3, 41500, '2023-02-02 15:00:02');
+insert into transaction (client_id, amount, created_at) values (3, 32700, '2023-02-03 15:47:17');
+insert into transaction (client_id, amount, created_at) values (3, 12700, '2023-02-12 17:45:24');
+insert into transaction (client_id, amount, created_at) values (3, 700, '2023-03-12 01:05:01');
+
+-- среднее в рамках партиции окна
+-- https://postgrespro.ru/docs/postgresql/9.5/tutorial-window
+select
+    *,
+    AVG(amount) OVER(PARTITION BY "month"),
+    ROUND(
+        amount * 100.0 / AVG(amount) OVER(PARTITION BY "month")
+    , 2)
+from (
+    select
+        c.id,
+        c.name,
+        LEFT(t.created_at::date::text, 7) as month,
+        amount
+    from transaction as t
+    left join client as c ON c.id = t.client_id
+) prep
+
+-- Минимальное значение в группе
+-- https://postgrespro.ru/docs/postgrespro/15/functions-window
+select
+    *,
+    first_value(amount) OVER(PARTITION BY "month"),
+    ROUND(
+        amount * 100.0 / first_value(amount) OVER(PARTITION BY "month")
+    , 2)
+from (
+    select
+        c.id,
+        c.name,
+        LEFT(t.created_at::date::text, 7) as month,
+        amount
+    from transaction as t
+    left join client as c ON c.id = t.client_id
+) prep
+
+-- для пагинации
+select
+    c.id,
+    c.name,
+    LEFT(t.created_at::date::text, 7) as month,
+    amount,
+    count(1) OVER() as total_rows
+from transaction as t
+left join client as c ON c.id = t.client_id
+limit 10 offset 0
+
+
+-- row_number
+select
+    c.id,
+    c.name,
+    LEFT(t.created_at::date::text, 7) as month,
+    amount,
+    row_number() over () as row_idx,
+    count(1) OVER() as total_rows
+from transaction as t
+left join client as c ON c.id = t.client_id
+limit 10 offset 10
+
+
+-- нарастающий итог
+-- https://habr.com/ru/company/otus/blog/490296/
+select
+    *,
+    SUM(t_amount) over(ORDER BY c_id, t_created_at rows between unbounded preceding and current row) as sum_total,
+    SUM(t_amount) over(partition by c_id, t_month order by c_id, t_created_at rows between unbounded preceding and current row)
+from (
+    select
+        c.id as c_id,
+        c.name as c_name,
+        LEFT(t.created_at::date::text, 7) as t_month,
+        amount as t_amount,
+        t.created_at as t_created_at
+    from transaction as t
+    left join client as c ON c.id = t.client_id
+) prep
+order by c_id, t_created_at
+```

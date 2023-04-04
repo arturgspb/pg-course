@@ -212,7 +212,8 @@ insert into transaction (client_id, amount, created_at) values (3, 700, '2023-03
 -- https://postgrespro.ru/docs/postgresql/9.5/tutorial-window
 select
     *,
-    AVG(amount) OVER(PARTITION BY "month"),
+    AVG(amount) OVER(PARTITION BY "month") as avg_by_month,
+    AVG(amount) OVER() as avg_total,
     ROUND(
         amount * 100.0 / AVG(amount) OVER(PARTITION BY "month")
     , 2)
@@ -226,20 +227,18 @@ from (
     left join client as c ON c.id = t.client_id
 ) prep
 
--- Минимальное значение в группе
+-- Тразнакция с минимальным значением
 -- https://postgrespro.ru/docs/postgrespro/15/functions-window
 select
     *,
-    first_value(amount) OVER(PARTITION BY "month"),
-    ROUND(
-        amount * 100.0 / first_value(amount) OVER(PARTITION BY "month")
-    , 2)
+    first_value(transaction_id) OVER(PARTITION BY "month" ORDER BY "amount") as min_amount_transaction_id
 from (
     select
         c.id,
         c.name,
         LEFT(t.created_at::date::text, 7) as month,
-        amount
+        amount,
+        t.id as transaction_id
     from transaction as t
     left join client as c ON c.id = t.client_id
 ) prep
